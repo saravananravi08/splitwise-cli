@@ -170,13 +170,34 @@ splitwise delete 123456 --yes    # Confirm and delete
 
 ### 2. Get Access Token
 
-You'll receive OAuth tokens during the authorization flow. For testing, you can generate an API key directly from the app page.
+**Option A: Generate API Key (Easiest)**
+1. Go to [https://secure.splitwise.com/apps](https://secure.splitwise.com/apps)
+2. Click on your registered app
+3. Look for **"Generate API Key"** or **"Generate Access Token"** button
+4. Copy the **Access Token** and **Access Token Secret**
+
+**Option B: OAuth Flow**
+For production use, implement OAuth 1.0 flow:
+1. Get request token from `https://secure.splitwise.com/oauth/request_token`
+2. Redirect user to `https://secure.splitwise.com/oauth/authorize`
+3. After authorization, exchange verifier for access token at `https://secure.splitwise.com/oauth/access_token`
+
+See [Splitwise OAuth Guide](https://github.com/namaggarwal/splitwise#oauth1) for implementation details.
 
 ### 3. Configure
 
 ```bash
 cp .env.example .env
-# Edit .env with your credentials
+nano .env  # Add your credentials
+```
+
+Your `.env` file should contain:
+```env
+SPLITWISE_CONSUMER_KEY=your_consumer_key
+SPLITWISE_CONSUMER_SECRET=your_consumer_secret
+SPLITWISE_ACCESS_TOKEN=your_access_token
+SPLITWISE_ACCESS_SECRET=your_access_token_secret
+DEFAULT_CURRENCY=INR
 ```
 
 ## 🔒 Security
