@@ -4,33 +4,50 @@ Provides easy-to-use functions for interacting with Splitwise API
 """
 
 import os
+import sys
 import json
 from pathlib import Path
 from dotenv import load_dotenv
 from requests_oauthlib import OAuth1
 import requests
 
+# Determine base directory (where .env is located)
+BASE_DIR = Path(__file__).parent.parent
+
 # Load environment variables
-env_path = Path(__file__).parent.parent / '.env'
+env_path = BASE_DIR / '.env'
 load_dotenv(env_path)
 
-# Get credentials
+# Get credentials from .env (app credentials only)
 CONSUMER_KEY = os.getenv('SPLITWISE_CONSUMER_KEY')
 CONSUMER_SECRET = os.getenv('SPLITWISE_CONSUMER_SECRET')
-ACCESS_TOKEN = os.getenv('SPLITWISE_ACCESS_TOKEN')
-ACCESS_SECRET = os.getenv('SPLITWISE_ACCESS_SECRET')
 DEFAULT_CURRENCY = os.getenv('DEFAULT_CURRENCY', 'INR')
 
 BASE_URL = 'https://secure.splitwise.com/api/v3.0'
 
 
 def get_auth():
-    """Returns OAuth1 authentication object"""
+    """Returns OAuth1 authentication object using tokens from .tokens.json"""
+    result = load_auth_token()
+    
+    if not result:
+        print("\n❌ Not authenticated!")
+        print("\n   Run 'splitwise auth' to login first.")
+        print("\n   Example: splitwise auth YOUR_VERIFIER")
+        sys.exit(1)
+    
+    token, secret = result
+    
+    if not token or not secret:
+        print("\n❌ Not authenticated!")
+        print("\n   Run 'splitwise auth' to login first.")
+        sys.exit(1)
+    
     return OAuth1(
         client_key=CONSUMER_KEY,
         client_secret=CONSUMER_SECRET,
-        resource_owner_key=ACCESS_TOKEN,
-        resource_owner_secret=ACCESS_SECRET
+        resource_owner_key=token,
+        resource_owner_secret=secret
     )
 
 
@@ -211,6 +228,106 @@ def delete_expense(expense_id):
     data = {'id': str(expense_id)}
     result = api_post('delete_expense', data)
     return result
+
+
+# ============== Auth Functions ==============
+
+import json
+from pathlib import Path
+
+AUTH_SECRET_FILE = BASE_DIR / '.oauth_secret'
+
+
+def get_auth_url():
+    """Get OAuth authorization URL and secret"""
+    from splitwise import Splitwise
+    consumer_key = os.getenv('SPLITWISE_CONSUMER_KEY')
+    consumer_secret = os.getenv('SPLITWISE_CONSUMER_SECRET')
+    
+    if not consumer_key or not consumer_secret:
+        return None, None, None, "Missing SPLITWISE_CONSUMER_KEY or SPLITWISE_CONSUMER_SECRET"
+    
+    sObj = Splitwise(consumer_key, consumer_secret)
+    url, secret = sObj.getAuthorizeURL()
+    
+    # Extract oauth_token from URL
+    from urllib.parse import urlparse, parse_qs
+    parsed = urlparse(url)
+    oauth_token = parse_qs(parsed.query).get('oauth_token', [''])[0]
+    
+    return url, secret, oauth_token, None
+
+
+def exchange_verifier(oauth_token, oauth_secret, oauth_verifier):
+    """Exchange oauth_verifier for access token"""
+    from splitwise import Splitwise
+    consumer_key = os.getenv('SPLITWISE_CONSUMER_KEY')
+    consumer_secret = os.getenv('SPLITWISE_CONSUMER_SECRET')
+    
+    if not consumer_key or not consumer_secret:
+        return None, "Missing SPLITWISE_CONSUMER_KEY or SPLITWISE_CONSUMER_SECRET"
+    
+    sObj = Splitwise(consumer_key, consumer_secret)
+    access_token = sObj.getAccessToken(oauth_token, oauth_secret, oauth_verifier)
+    return access_token, None
+
+
+def get_tokens_file():
+    """Get path to tokens file"""
+    return BASE_DIR / '.tokens.json'
+
+
+def save_auth_token(access_token):
+    """
+    Save access token to separate file (not .env).
+    .env is only for app credentials (consumer key/secret).
+    Tokens file stores user's access tokens.
+    """
+    tokens_file = get_tokens_file()
+    
+    tokens = {}
+    if tokens_file.exists():
+        with open(tokens_file, 'r') as f:
+            tokens = json.load(f)
+    
+    # Update with new tokens (replaces old ones)
+    if isinstance(access_token, dict):
+        tokens['oauth_token'] = access_token.get('oauth_token', '')
+        tokens['oauth_token_secret'] = access_token.get('oauth_token_secret', '')
+    
+    with open(tokens_file, 'w') as f:
+        json.dump(tokens, f, indent=2)
+    
+    return True
+
+
+def load_auth_token():
+    """Load access token from separate file"""
+    tokens_file = get_tokens_file()
+    
+    if not tokens_file.exists():
+        return None
+    
+    with open(tokens_file, 'r') as f:
+        tokens = json.load(f)
+    
+    return tokens.get('oauth_token'), tokens.get('oauth_token_secret')
+
+
+def clear_auth_token():
+    """Clear access tokens (logout)"""
+    tokens_file = get_tokens_file()
+    
+    if tokens_file.exists():
+        tokens_file.unlink()
+    
+    return True
+
+
+def is_authenticated():
+    """Check if user has valid access tokens"""
+    token, secret = load_auth_token()
+    return bool(token and secret)
 
 
 # ============== Utility Functions ==============

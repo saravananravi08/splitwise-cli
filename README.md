@@ -28,52 +28,76 @@ cd splitwise-cli
 pip install -r requirements.txt
 ```
 
-### 2. Configure
+### 2. Register Your App (Get Consumer Key & Secret)
+
+1. Go to [https://secure.splitwise.com/apps](https://secure.splitwise.com/apps)
+2. Click **"Register your application"** at the top
+3. Fill in the form:
+   - **Application name**: `Splitwise CLI` (any name)
+   - **Main page URL**: `http://localhost`
+   - **Callback URL**: `http://localhost`
+4. Click **Register**
+5. Copy your **Consumer Key** and **Consumer Secret**
+
+### 3. Configure
 
 ```bash
 # Copy the example env file
 cp .env.example .env
 
-# Edit .env with your Splitwise credentials
-# Get them from: https://secure.splitwise.com/apps
+# Edit .env with just your app credentials
 nano .env
 ```
 
-Your `.env` should look like:
+Your `.env` should contain only app credentials:
 ```env
 SPLITWISE_CONSUMER_KEY=your_consumer_key
 SPLITWISE_CONSUMER_SECRET=your_consumer_secret
-SPLITWISE_ACCESS_TOKEN=your_access_token
-SPLITWISE_ACCESS_SECRET=your_access_token_secret
 DEFAULT_CURRENCY=INR
 ```
 
-### 3. Run
+> **Note:** User access tokens are stored separately in `.tokens.json` (managed by CLI)
+
+### 4. Authenticate
 
 ```bash
-# View help
-python3 splitwise --help
+# Step 1: Get authorization URL
+splitwise auth
 
-# Check it works
-python3 splitwise user
+# Step 2: Visit the URL, authorize, copy the oauth_verifier
+
+# Step 3: Complete authentication
+splitwise auth YOUR_OAUTH_VERIFIER
+
+# Step 4: Verify
+splitwise user
+```
+
+### 5. You're Ready!
+
+```bash
+splitwise groups           # List your groups
+splitwise members "Trip"  # List group members
+splitwise add "Dinner" 500 --group "Trip"
 ```
 
 ## 📦 Global CLI Installation
 
-### Option 1: Add to PATH (Recommended)
+### Option 1: Symlink to ~/bin (Recommended)
 
 ```bash
-# Create a symlink in ~/bin
-ln -s ~/path/to/splitwise-cli/splitwise ~/bin/splitwise
+# Navigate to your splitwise-cli directory
+cd ~/splitwise-cli
+
+# Create symlink
+ln -s $(pwd)/splitwise ~/bin/splitwise
 
 # Add to ~/.bashrc for persistence
 echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
-
-# Now use from anywhere
-splitwise user
-splitwise groups
 ```
+
+**Now use `splitwise` from anywhere!**
 
 ### Option 2: Install with pip
 
@@ -110,6 +134,39 @@ brew install splitwise-cli
 | `splitwise friends` | List friends |
 | `splitwise categories` | List categories |
 | `splitwise currencies` | List currencies |
+| `splitwise auth [verifier]` | Authenticate with OAuth |
+| `splitwise logout` | Clear stored credentials |
+
+## 🔐 Authentication
+
+### First Time Setup
+
+```bash
+# 1. Get authorization URL
+splitwise auth
+
+# 2. Visit the URL and authorize
+
+# 3. Paste the oauth_verifier to complete
+splitwise auth YOUR_VERIFIER
+
+# 4. Verify you're logged in
+splitwise user
+```
+
+### Re-authenticate (if expired)
+
+```bash
+# Same flow - old tokens will be replaced
+splitwise auth
+splitwise auth YOUR_VERIFIER
+```
+
+### Logout
+
+```bash
+splitwise logout
+```
 
 ## 💡 Usage Examples
 
@@ -156,56 +213,13 @@ splitwise delete 123456           # Preview what will be deleted
 splitwise delete 123456 --yes    # Confirm and delete
 ```
 
-## 🔧 Setup API Credentials
+## 🛠️ Requirements
 
-### 1. Register Your App
-
-1. Go to [Splitwise Developer Portal](https://secure.splitwise.com/apps)
-2. Click **Register your application**
-3. Fill in details:
-   - Name: `My Splitwise CLI`
-   - Callback URL: `http://localhost`
-4. Click **Register**
-5. Copy **Consumer Key** and **Consumer Secret**
-
-### 2. Get Access Token
-
-**Option A: Generate API Key (Easiest)**
-1. Go to [https://secure.splitwise.com/apps](https://secure.splitwise.com/apps)
-2. Click on your registered app
-3. Look for **"Generate API Key"** or **"Generate Access Token"** button
-4. Copy the **Access Token** and **Access Token Secret**
-
-**Option B: OAuth Flow**
-For production use, implement OAuth 1.0 flow:
-1. Get request token from `https://secure.splitwise.com/oauth/request_token`
-2. Redirect user to `https://secure.splitwise.com/oauth/authorize`
-3. After authorization, exchange verifier for access token at `https://secure.splitwise.com/oauth/access_token`
-
-See [Splitwise OAuth Guide](https://github.com/namaggarwal/splitwise#oauth1) for implementation details.
-
-### 3. Configure
-
-```bash
-cp .env.example .env
-nano .env  # Add your credentials
-```
-
-Your `.env` file should contain:
-```env
-SPLITWISE_CONSUMER_KEY=your_consumer_key
-SPLITWISE_CONSUMER_SECRET=your_consumer_secret
-SPLITWISE_ACCESS_TOKEN=your_access_token
-SPLITWISE_ACCESS_SECRET=your_access_token_secret
-DEFAULT_CURRENCY=INR
-```
-
-## 🔒 Security
-
-- ✅ API credentials stored locally in `.env` (not committed to git)
-- ✅ `.gitignore` ensures secrets are never pushed
+- ✅ App credentials (consumer key/secret) stored in `.env` (not committed to git)
+- ✅ User access tokens stored in `.tokens.json` (auto-managed, gitignored)
+- ✅ `.gitignore` ensures no secrets are pushed
 - ✅ Delete commands always require confirmation
-- ✅ No data sent to third parties
+- ✅ OAuth data temporarily stored in `.oauth_data` (gitignored)
 
 ## 🛠️ Requirements
 

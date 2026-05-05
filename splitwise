@@ -15,6 +15,7 @@ Usage:
 
 import sys
 import argparse
+import json
 from pathlib import Path
 
 # Determine the base directory (where this script lives)
@@ -40,7 +41,11 @@ from splitwise_api import (
     delete_expense,
     api_get,
     api_post,
-    api_get
+    get_auth_url,
+    exchange_verifier,
+    save_auth_token,
+    clear_auth_token,
+    is_authenticated
 )
 
 # Colors for output
@@ -694,6 +699,13 @@ Examples:
     members_parser = subparsers.add_parser('members', help='List group members')
     members_parser.add_argument('group', nargs='?', default='', help='Group name (optional)')
     
+    # auth command
+    auth_parser = subparsers.add_parser('auth', help='Authenticate with OAuth')
+    auth_parser.add_argument('verifier', nargs='?', help='OAuth verifier (from callback URL)')
+    
+    # logout command
+    subparsers.add_parser('logout', help='Clear stored credentials (logout)')
+    
     args = parser.parse_args()
     
     # Route commands
@@ -728,8 +740,113 @@ Examples:
         show_comments(args.expense_id)
     elif args.command == 'members':
         show_members(args.group)
+    elif args.command == 'auth':
+        handle_auth(args.verifier)
+    elif args.command == 'logout':
+        handle_logout()
     else:
         parser.print_help()
+
+
+def handle_auth(verifier=None):
+    """
+    Handle OAuth authentication flow.
+    Step 1: No verifier -> Generate auth URL and save secret
+    Step 2: Verifier provided -> Exchange for access token and save to .env
+    """
+    from urllib.parse import urlparse, parse_qs
+    
+    # Path to store temporary OAuth data
+    auth_data_file = BASE_DIR / '.oauth_data'
+    
+    if not verifier:
+        # Step 1: Generate authorization URL
+        print(f"\n{BOLD}🔐 Splitwise OAuth Authentication{RESET}")
+        print("-" * 50)
+        
+        url, oauth_secret, oauth_token, error = get_auth_url()
+        
+        if error:
+            print(f"{RED}❌ {error}{RESET}")
+            print(f"\n   Make sure you have SPLITWISE_CONSUMER_KEY and")
+            print(f"   SPLITWISE_CONSUMER_SECRET in your .env file")
+            return
+        
+        # Save the OAuth data for later use
+        auth_data = {
+            'oauth_token': oauth_token,
+            'oauth_secret': oauth_secret
+        }
+        with open(auth_data_file, 'w') as f:
+            json.dump(auth_data, f)
+        
+        print(f"\n{GREEN}✅ Authorization URL generated!{RESET}\n")
+        print(f"   {BOLD}Step 1:{RESET} Copy and visit this URL in your browser:")
+        print(f"\n   {BLUE}{url}{RESET}\n")
+        print(f"   {BOLD}Step 2:{RESET} After authorizing, you'll be redirected to a callback")
+        print(f"   page. Copy the 'oauth_verifier' parameter from the URL.")
+        print(f"\n   {BOLD}Step 3:{RESET} Come back here and run:")
+        print(f"\n   {BOLD}   splitwise auth YOUR_OAUTH_VERIFIER{RESET}\n")
+        print(f"   Example: splitwise auth Abc123Xyz456Def789")
+        
+    else:
+        # Step 2: Exchange verifier for access token
+        print(f"\n{BOLD}🔐 Exchanging verifier for access token...{RESET}\n")
+        
+        # Read the saved OAuth data
+        if not auth_data_file.exists():
+            print(f"{RED}❌ No pending authorization found.{RESET}")
+            print(f"   Run {BOLD}'splitwise auth'{RESET} first to get the authorization URL.")
+            return
+        
+        with open(auth_data_file, 'r') as f:
+            auth_data = json.load(f)
+        
+        oauth_token = auth_data.get('oauth_token', '')
+        oauth_secret = auth_data.get('oauth_secret', '')
+        
+        if not oauth_token or not oauth_secret:
+            print(f"{RED}❌ Invalid OAuth data. Run 'splitwise auth' again.{RESET}")
+            return
+        
+        # Exchange for access token
+        access_token, error = exchange_verifier(oauth_token, oauth_secret, verifier)
+        
+        if error:
+            print(f"{RED}❌ {error}{RESET}")
+            return
+        
+        if access_token:
+            # Save to separate tokens file (replaces old tokens)
+            save_auth_token(access_token)
+            
+            # Clean up temporary OAuth data
+            auth_data_file.unlink(missing_ok=True)
+            
+            print(f"{GREEN}✅ Authentication successful!{RESET}")
+            print(f"\n   Access token saved to .tokens.json")
+            print(f"\n   {BOLD}You can now use splitwise commands!{RESET}")
+            print(f"\n   Try: {BOLD}splitwise user{RESET} to verify")
+        else:
+            print(f"{RED}❌ Failed to get access token{RESET}")
+
+
+def handle_logout():
+    """Clear stored credentials (logout)"""
+    print(f"\n{BOLD}🔐 Logging out...{RESET}")
+    
+    # Clear access tokens from .env
+    cleared = clear_auth_token()
+    
+    # Clean up OAuth data file
+    auth_data_file = BASE_DIR / '.oauth_data'
+    auth_data_file.unlink(missing_ok=True)
+    
+    if cleared:
+        print(f"\n{GREEN}✅ Logged out successfully!{RESET}")
+        print(f"\n   To login again, run: {BOLD}splitwise auth{RESET}")
+    else:
+        print(f"{YELLOW}⚠️  No credentials found to clear.{RESET}")
 
 
 if __name__ == '__main__':

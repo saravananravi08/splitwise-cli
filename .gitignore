@@ -5,6 +5,10 @@
 *.pem
 *.key
 
+# User tokens (auth tokens stored separately, not in .env)
+.tokens.json
+.oauth_data
+
 # Python
 __pycache__/
 *.py[cod]
